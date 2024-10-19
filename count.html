@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Count Master 3D Clone</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 40px;
+            text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">Count: <span id="count">1</span></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let player, ground, playerCountDisplay;
+        let isMouseDown = false;
+        let lastMouseX = 0;
+        let numberGates = [];
+        let enemies = [];
+        let playerCount = 1;
+        let crowdMembers = [];
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x87CEEB);
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            const groundGeometry = new THREE.PlaneGeometry(10, 100);
+            const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+            ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.z = -45;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            createPlayer();
+            camera.position.set(0, 5, 10);
+            camera.lookAt(player.position);
+
+            document.addEventListener('touchstart', onTouchStart, false);
+            document.addEventListener('touchmove', onTouchMove, false);
+            document.addEventListener('touchend', onTouchEnd, false);
+            document.addEventListener('mousedown', onMouseDown, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('mouseup', onMouseUp, false);
+
+            createCrowd();
+            createNumberGate();
+            createEnemy();
+
+            animate();
+        }
+
+        function createPlayer() {
+            const playerGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+            const playerMaterial = new THREE.MeshPhongMaterial({ color: 0x1E90FF });
+            player = new THREE.Mesh(playerGeometry, playerMaterial);
+            player.castShadow = true;
+            player.position.set(0, 0.5, 0);
+            scene.add(player);
+
+            playerCountDisplay = createTextSprite(playerCount.toString());
+            playerCountDisplay.position.set(0, 1.2, 0);
+            player.add(playerCountDisplay);
+        }
+
+        function createTextSprite(text) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 512;
+            context.font = 'Bold 200px Arial';
+            context.fillStyle = 'white';
+            context.strokeStyle = 'black';
+            context.lineWidth = 16;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.strokeText(text, 256, 256);
+            context.fillText(text, 256, 256);
+           
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(1.5, 1.5, 1.5);
+            return sprite;
+        }
+
+        function createCrowd() {
+            crowdMembers.forEach(member => player.remove(member));
+            crowdMembers = [];
+
+            const gap = 0.3;
+            let row = 0;
+            let col = 0;
+            const maxPerRow = Math.ceil(Math.sqrt(playerCount));
+
+            for (let i = 0; i < playerCount; i++) {
+                const memberGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+                const memberMaterial = new THREE.MeshPhongMaterial({ color: 0x1E90FF });
+                const member = new THREE.Mesh(memberGeometry, memberMaterial);
+                
+                const x = col * gap - (maxPerRow * gap) / 2;
+                const z = row * gap;
+                
+                member.position.set(x, 0.2, z);
+                member.castShadow = true;
+                player.add(member);
+                crowdMembers.push(member);
+
+                col++;
+                if (col >= maxPerRow) {
+                    col = 0;
+                    row++;
+                }
+            }
+        }
+
+        function createNumberGate() {
+            const gateTypes = [
+                { operation: 'add', symbol: '+', color: 0x00FF00 },
+                { operation: 'subtract', symbol: '-', color: 0xFF0000 }
+            ];
+
+            const selectedType = gateTypes[Math.floor(Math.random() * gateTypes.length)];
+            let number = selectedType.operation === 'add' ? 
+                        Math.floor(Math.random() * 50) + 10 : 
+                        Math.floor(Math.random() * 20) + 5;
+
+            const gateGroup = new THREE.Group();
+            
+            const frameGeometry = new THREE.BoxGeometry(3, 4, 0.5);
+            const frameMaterial = new THREE.MeshPhongMaterial({ color: selectedType.color });
+            const frame = new THREE.Mesh(frameGeometry, frameMaterial);
+            frame.castShadow = true;
+            gateGroup.add(frame);
+
+            const textSprite = createTextSprite(`${selectedType.symbol}${number}`);
+            textSprite.position.set(0, 0, 0.26);
+            gateGroup.add(textSprite);
+
+            const randomX = Math.random() * 6 - 3;
+            gateGroup.position.set(randomX, 2, player.position.z - 50 - Math.random() * 20);
+            
+            gateGroup.userData = { 
+                operation: selectedType.operation,
+                number: number
+            };
+
+            scene.add(gateGroup);
+            numberGates.push(gateGroup);
+        }
+
+        function createEnemy() {
+            const strength = Math.floor(Math.random() * 10) + 1;
+
+            const enemyGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+            const enemyMaterial = new THREE.MeshPhongMaterial({ color: 0xFF0000 });
+            const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+           
+            const randomX = Math.random() * 6 - 3;
+            enemy.position.set(randomX, 0.5, player.position.z - 60 - Math.random() * 20);
+            enemy.castShadow = true;
+            enemy.receiveShadow = true;
+
+            const textSprite = createTextSprite(strength.toString());
+            textSprite.position.set(0, 1, 0);
+            enemy.add(textSprite);
+
+            enemy.userData = { strength: strength };
+            scene.add(enemy);
+            enemies.push(enemy);
+        }
+
+        function processGateEffect(gate) {
+            const { operation, number } = gate.userData;
+            let newCount = playerCount;
+
+            switch (operation) {
+                case 'add':
+                    newCount += number;
+                    break;
+                case 'subtract':
+                    newCount -= number;
+                    break;
+            }
+
+            updatePlayerCount(newCount);
+        }
+
+        function updatePlayerCount(newCount) {
+            playerCount = Math.max(1, Math.floor(newCount));
+            document.getElementById('count').textContent = playerCount;
+            createCrowd();
+            
+            player.remove(playerCountDisplay);
+            playerCountDisplay = createTextSprite(playerCount.toString());
+            playerCountDisplay.position.set(0, 1.2, 0);
+            player.add(playerCountDisplay);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            player.position.z -= 0.2;
+            camera.position.z = player.position.z + 10;
+            ground.position.z = player.position.z - 45;
+
+            playerCountDisplay.lookAt(camera.position);
+
+            numberGates.forEach((gate, index) => {
+                if (gate.position.z > player.position.z) {
+                    const distance = Math.abs(gate.position.x - player.position.x);
+                    if (distance < 1) {
+                        processGateEffect(gate);
+                    }
+                    scene.remove(gate);
+                    numberGates.splice(index, 1);
+                }
+            });
+
+            enemies.forEach((enemy, index) => {
+                if (enemy.position.z > player.position.z) {
+                    const distance = Math.abs(enemy.position.x - player.position.x);
+                    if (distance < 1) {
+                        updatePlayerCount(Math.max(1, playerCount - enemy.userData.strength));
+                    }
+                    scene.remove(enemy);
+                    enemies.splice(index, 1);
+                }
+            });
+
+            if (numberGates.length < 3) {
+                createNumberGate();
+            }
+
+            if (enemies.length < 2) {
+                createEnemy();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onTouchStart(event) {
+            isMouseDown = true;
+            lastMouseX = event.touches[0].clientX;
+        }
+
+        function onTouchMove(event) {
+            if (!isMouseDown) return;
+            const deltaX = event.touches[0].clientX - lastMouseX;
+            movePlayer(deltaX * 0.01);
+            lastMouseX = event.touches[0].clientX;
+        }
+
+        function onTouchEnd() {
+            isMouseDown = false;
+        }
+
+        function onMouseDown(event) {
+            isMouseDown = true;
+            lastMouseX = event.clientX;
+        }
+
+        function onMouseMove(event) {
+            if (!isMouseDown) return;
+            const deltaX = event.clientX - lastMouseX;
+            movePlayer(deltaX * 0.01);
+            lastMouseX = event.clientX;
+        }
+
+        function onMouseUp() {
+            isMouseDown = false;
+        }
+
+        function movePlayer(deltaX) {
+            player.position.x += deltaX;
+            player.position.x = Math.max(-4, Math.min(4, player.position.x));
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.addEventListener('resize', onWindowResize, false);
+        init();
+    </script>
+</body>
+</html>
